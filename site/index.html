@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      if (location.protocol === 'http:' && location.hostname === 'www.arunavgupta.com') {
+        location.replace(`https://${location.host}${location.pathname}${location.search}${location.hash}`);
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#191321" />
+    <meta name="description" content="A tiny, Jev-powered magic 8 ball. Ask a question. Shake the possibilities." />
+    <title>Magic 8 Ball</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%23ff62aa'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='44'%3E8%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div class="world" aria-hidden="true"><div class="stars"></div><div class="floor"></div></div>
+    <main class="game">
+      <h1 class="sr-only">Magic 8 Ball</h1>
+      <section class="oracle-scene" id="oracle-scene" data-state="idle" aria-label="The magic 8 ball">
+        <div class="ball-stage">
+          <span class="spark spark-one" aria-hidden="true">✦</span>
+          <span class="spark spark-two" aria-hidden="true">+</span>
+          <div class="ball" id="ball">
+            <canvas id="ball-canvas" width="180" height="180" aria-hidden="true"></canvas>
+            <div class="ball-eight" aria-hidden="true">8</div>
+            <div class="answer-triangle" aria-hidden="true"><span id="triangle-answer"></span></div>
+            <div class="thinking-label" aria-hidden="true">A LITTLE<br />COSMIC CHAOS<span>…</span></div>
+          </div>
+          <div class="ball-shadow" aria-hidden="true"></div>
+        </div>
+        <span id="scene-caption" class="sr-only">Ask the unknown.</span>
+        <div id="answer-output" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      </section>
+      <form id="question-form" novalidate>
+        <div class="label-row">
+          <label for="question">Ask the unknown.</label>
+          <span id="character-count" aria-hidden="true">0 / 500</span>
+        </div>
+        <input id="question" name="question" type="text" maxlength="500" required placeholder="Will it all work out?" aria-describedby="question-hint status" autocomplete="off" />
+        <span class="sr-only" id="question-hint">Ask a yes-or-no question. For entertainment, not life decisions.</span>
+        <div class="form-actions">
+          <button class="shake-button" id="shake-button" type="submit"><span id="button-label">Shake!</span><span class="button-spark" aria-hidden="true">✦</span></button>
+          <button class="motion-button" id="motion-button" type="button" aria-pressed="false" hidden>Enable phone shake</button>
+        </div>
+        <div id="verification" aria-label="Security verification"></div>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true">A little curiosity goes a long way.</p>
+      </form>
+    </main>
+    <aside class="chat-overlay" aria-label="Live request log">
+      <div class="chat-heading"><span id="connection-dot" class="connection-dot" aria-hidden="true"></span><button id="chat-toggle" type="button" aria-expanded="true" aria-controls="chat-log" aria-label="Minimize request log">−</button></div>
+      <div id="chat-log" class="chat-log" role="log" aria-live="off" tabindex="0" aria-label="Request and probability log"></div>
+    </aside>
+    <span class="game-note">Just for fun. Powered by Jev.</span>
+    <noscript><p class="noscript">Enable JavaScript to ask the ball a question.</p></noscript>
+  </body>
+</html>

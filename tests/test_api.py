@@ -27,6 +27,7 @@ class AccessBoundaryTests(unittest.TestCase):
             "model": "jev-test",
             "answers": {key: {"type": "noul", "noul": (index + 1) / 10} for index, (key, _) in enumerate(ANSWERS)},
         }
+        self.upstream["answers"]["is_yes_no"] = {"type": "noul", "noul": 0.99}
         self.api.state.client = httpx.AsyncClient(transport=httpx.MockTransport(self.transport))
         self.addCleanup(self.client.portal.call, self.api.state.client.aclose)
 
@@ -119,10 +120,35 @@ class AccessBoundaryTests(unittest.TestCase):
         self.assertEqual(len(paid_calls), 1)
         batch = json.loads(paid_calls[0].content)
         self.assertEqual(batch["state"], {"question": "Is the sun a star?"})
-        self.assertEqual(len(batch["questions"]), 8)
+        self.assertEqual(len(batch["questions"]), 9)
         self.assertEqual({q["type"] for q in batch["questions"].values()}, {"noul"})
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertNotIn("private-test", response.text)
+
+    def test_non_binary_override_uses_strict_probability_threshold(self):
+        for probability, expected_id in [
+            (0.09999999999999999, "not_yes_no"),
+            (0.10, ANSWERS[-1][0]),
+            (0.10000000000000002, ANSWERS[-1][0]),
+        ]:
+            with self.subTest(yes_no_probability=probability):
+                self.upstream["answers"]["is_yes_no"]["noul"] = probability
+                response = self.ask(question="Tell me a story")
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(data["selected_answer"]["id"], expected_id)
+                self.assertEqual(data["yes_no_probability"], probability)
+                if expected_id == "not_yes_no":
+                    self.assertEqual(data["selected_answer"]["text"], "Yes or no, babe. Work with me.")
+                self.assertEqual(len(data["answers"]), 8)
+
+    def test_invalid_or_missing_question_type_is_not_treated_as_yes_or_no(self):
+        for invalid in [None, True, -0.01, 1.01, "0.99"]:
+            with self.subTest(invalid=invalid):
+                self.upstream["answers"]["is_yes_no"]["noul"] = invalid
+                self.assertEqual(self.ask().status_code, 502)
+        del self.upstream["answers"]["is_yes_no"]
+        self.assertEqual(self.ask().status_code, 502)
 
     def test_invalid_inputs_do_not_spend_tokens_or_echo_secrets(self):
         for question in ["  ", "x" * 501, 123]:

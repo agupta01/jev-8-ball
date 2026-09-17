@@ -1,8 +1,9 @@
 # jev-8-ball
 
 A single-screen, pixel-art magic 8 ball. Static HTML/CSS/JavaScript on GitHub
-Pages; a Turnstile-protected FastAPI service on Modal; eight independent Noul
-judgments in one request to TypeSafe's `jev-latest`.
+Pages; a Turnstile-protected FastAPI service on Modal; nine independent Noul
+judgments (eight answers and one question-type check) in one request to
+TypeSafe's `jev-latest`.
 
 ## Run and deploy
 
@@ -70,11 +71,20 @@ are short-lived and single-use. CORS alone is not authentication, and this
 anonymous protection is not a guarantee against determined automated abuse.
 There is no public verification bypass.
 
-A successful request returns eight `{id, text, probability}` answers, the model
-identifier, and `elapsed_ms` measured around the Jev HTTP call. Each probability
+A successful request returns eight `{id, text, probability}` answers,
+`yes_no_probability`, a `selected_answer` with the same answer shape, the model
+identifier, and `elapsed_ms` measured around the Jev HTTP call. Each answer probability
 measures whether that fixed answer fits the question; they are independent,
-do not sum to 100%, and are not predictions of real-world events. The frontend
-chooses the highest score, keeping the first answer on ties.
+do not sum to 100%, and are not predictions of real-world events. The backend
+normally chooses the highest score, keeping the first answer on ties.
+
+The ninth Noul, `is_yes_no`, judges question form and intent rather than whether
+the answer is knowable. If `yes_no_probability < 0.10` (strictly greater than
+90% probability of **not** being a yes/no question), `selected_answer` instead
+contains “Yes or no, babe. Work with me.” with ID `not_yes_no`. Exactly 90% does
+not trigger the override. Its probability is `1 - yes_no_probability`; the eight
+original scores remain unchanged. The frontend displays this backend selection,
+using a compact sans-serif label that fits inside the triangle.
 
 Each answer has its own Noul `true`/`false` criteria in `main.py`.
 Ordinary low-stakes uncertainty permits a playful directional answer rather
@@ -105,11 +115,12 @@ uv run modal app logs jev-8-ball --profile agupta01 --env jev-8-ball-prod --tail
 Add `--follow` instead of `--tail 100` to stream. Structured JSON events cover
 HTTP start/completion, Turnstile success/failure, Jev start/completion/failure,
 and authenticated development RPCs. They include a request ID, status, stage
-timings, model, winner, and all eight probabilities. Public HTTP responses
+timings, model, winner, all eight answer probabilities, and the yes/no-question
+probability. Public HTTP responses
 include `X-Request-ID` for correlation. API keys, verification tokens, request
 bodies, and raw question text are not logged.
 
-The on-screen timing and eight scores are appended together immediately after
+The on-screen timing, eight answer scores, and yes/no-question score are appended immediately after
 the response JSON is parsed and validated, before the remaining 2.4-second hold
 and triangle reveal. These are not streamed individual model results. The
 displayed Jev duration measures the backend's TypeSafe HTTP call, not Turnstile,
@@ -123,9 +134,10 @@ Select `jev-latest` at https://console.typesafe.ai/decode and paste:
 - **Schema / Questions:** [`examples/jev-playground-schema.json`](examples/jev-playground-schema.json)
 
 These files were captured from the outgoing JSON of a real TypeSafe request,
-not reconstructed from a shortened example. The schema file is the eight-question
+not reconstructed from a shortened example. The schema file is the nine-question
 map, without an outer `questions` wrapper. The capture used “Will my date go well?”
-and resolved to `jev-1.13.0`; its winner was “Signs point to yes” at 0.80.
+and resolved to `jev-1.13.0`; its winner was “Signs point to yes” at 0.79,
+with a yes/no-question probability of 0.98.
 Results may vary between calls or model versions.
 
 ## Verification
@@ -135,9 +147,17 @@ uv run python -m unittest discover -s tests -v
 ```
 
 The tests protect origin and Turnstile hostname/action boundaries, input limits,
-single-batch behavior, rejection of incomplete or invalid probabilities, and the
+single-batch behavior, the strict question-type threshold, rejection of incomplete
+or invalid probabilities, and the
 development server's cross-origin and DNS-rebinding boundaries.
 They mock external services; they do not spend production inference tokens.
+
+Live question-type checks returned the sassy reply for “Tell me a story.”,
+“What should I eat for dinner?”, and “Can you explain why the sky is blue?”,
+while retaining normal answers for binary factual and uncertain future questions.
+The real local browser flow rendered the sassy reply and then recovered to a
+normal answer on the next question. Character bounds stayed inside the triangle
+at 1280×850, 390×844, 320×568, and 844×390, without page scrolling.
 
 Live verification exercised the deployed denial paths and three real Jev batches
 using a private authenticated Modal job. Browser checks exercised the game with

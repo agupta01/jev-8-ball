@@ -128,6 +128,8 @@ async function getVerificationToken() {
 
 function validateResponse(data) {
   if (!data || !Array.isArray(data.answers) || data.answers.length !== 8 ||
+      !Number.isFinite(data.yes_no_probability) || data.yes_no_probability < 0 || data.yes_no_probability > 1 ||
+      !data.selected_answer ||
       !Number.isFinite(data.elapsed_ms) || data.elapsed_ms < 0 || typeof data.model !== 'string') {
     throw new Error('Jev sent an incomplete answer. Please try again.');
   }
@@ -139,6 +141,12 @@ function validateResponse(data) {
       throw new Error('Jev sent an invalid answer. Please try again.');
     }
     ids.add(answer.id);
+  }
+  const selected = data.selected_answer;
+  if (typeof selected.id !== 'string' || !selected.id ||
+      typeof selected.text !== 'string' || !selected.text.trim() ||
+      !Number.isFinite(selected.probability) || selected.probability < 0 || selected.probability > 1) {
+    throw new Error('Jev sent an invalid selected answer. Please try again.');
   }
   return data;
 }
@@ -198,15 +206,20 @@ async function submitQuestion(event) {
     // The feed reflects network completion, independently of the theatrical reveal.
     log(`Jev: (answered in ${Math.round(result.elapsed_ms)}ms)`);
     for (const answer of result.answers) log(`Jev: ${answer.text.replace(/[.!?]$/, '')}: ${percentage(answer.probability)}`);
-    const winner = result.answers.reduce((best, answer) => answer.probability > best.probability ? answer : best);
+    log(`Jev: Yes/no question: ${percentage(result.yes_no_probability)}`);
+    const winner = result.selected_answer;
+    const needsYesNo = winner.id === 'not_yes_no';
+    if (needsYesNo) log(`Jev: ${winner.text}`);
     setStatus('The answer is in. Let it rise…');
     const remaining = MIN_REVEAL_MS - (performance.now() - startedAt);
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-    document.querySelector('#triangle-answer').textContent = winner.text;
+    const triangleAnswer = document.querySelector('#triangle-answer');
+    triangleAnswer.textContent = winner.text;
+    triangleAnswer.classList.toggle('is-long', winner.text.length > 24);
     scene.dataset.state = 'answered';
-    document.querySelector('#scene-caption').textContent = 'The most likely of eight possibilities.';
-    answerOutput.textContent = `${winner.text} · ${percentage(winner.probability)} probability`;
-    setStatus('Another question? The ball is listening.');
+    document.querySelector('#scene-caption').textContent = needsYesNo ? 'Ask a yes-or-no question.' : 'The most likely of eight possibilities.';
+    answerOutput.textContent = needsYesNo ? winner.text : `${winner.text} · ${percentage(winner.probability)} probability`;
+    setStatus(needsYesNo ? 'Try a question the ball can answer yes or no.' : 'Another question? The ball is listening.');
     hasAnswered = true;
   } catch (error) {
     const message = error.name === 'AbortError' ? 'Jev took too long to respond. No request was retried; you can try again.' :

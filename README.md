@@ -88,7 +88,9 @@ information, or individualized expert determinations. Probabilities are not
 rescaled or overridden to force variety.
 
 The game logs the response immediately but waits at least 2.4 seconds before
-revealing its triangle. The question remains editable, and overlapping button,
+revealing its downward-pointing triangle. The die and liquid share the same pixel
+renderer, with beveled edges, a submerged shadow, and a shared glass reflection.
+The answer label stays sans-serif and scales with the ball. The question remains editable, and overlapping button,
 keyboard, or motion submissions cannot send concurrent requests. Phone shake
 requires a secure context, sensor support, and permission on devices that
 request it. The button remains available. Reduced-motion preferences disable

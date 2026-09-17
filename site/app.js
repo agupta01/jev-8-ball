@@ -329,7 +329,7 @@ motionButton.addEventListener('click', async () => {
   }
 });
 
-// A low-resolution, deliberately stepped sphere. The liquid is a tiny metaball field.
+// Sphere, liquid, and floating die share one pixel grid, beneath the glass and readable label.
 const canvas = document.querySelector('#ball-canvas');
 const context = canvas.getContext('2d', { alpha: true });
 if (context) {
@@ -357,17 +357,32 @@ if (context) {
       const noise = ((x * 31 + y * 17) % 13) < 3 ? 6 : 0;
       const shade = radius > 79 ? 22 : Math.round(23 + light * 35 + noise);
       let color = [shade, shade, Math.max(20, shade - 3)];
-      if (radius < 59) color = [15, 15, 23];
-      if (radius >= 57 && radius < 60 && dy < 24) color = [86, 74, 92];
+      if (radius < 61) color = [12, 10, 20];
+      if (radius >= 59 && radius < 61 && dy < 20) color = [76, 62, 86];
+      if (radius >= 54 && radius < 56 && dy > -12) color = [51, 35, 64];
       paint(offsets, color);
-      if (radius < 54) liquidCells.push({ offsets, x: dx / 54, y: dy / 54, radius: radius / 54 });
+      if (radius < 54) {
+        const nx = dx / 54;
+        const ny = dy / 54;
+        liquidCells.push({
+          offsets, x: nx, y: ny, radius: radius / 54,
+          shade: 1 - .48 * (radius / 54) ** 3,
+          grain: ((x * 31 + y * 17) % 7) - 3,
+          reflection: Math.abs(Math.hypot(nx + .13, ny + .18) - .75) < .025 && ny < -.32 && nx < .25 ? .24 : 0,
+        });
+      }
       if (x > 38 && x < 72 && y > 22 && y < 28 && radius < 76) paint(offsets, [102, 100, 99]);
     }
   }
   let visible = true;
   let previousFrame = 0;
-  function drawLiquid(time) {
-    const t = time / (scene.dataset.state === 'thinking' ? 1700 : 5500);
+  let renderedState;
+  let renderedReducedMotion;
+  let revealStarted = 0;
+  function drawLiquid(time, state, reveal) {
+    const t = time / (state === 'thinking' ? 1700 : 5500);
+    const scale = .82 + reveal * .18;
+    const rise = (1 - reveal) * .22;
     for (let i = 0; i < blobs.length; i++) {
       blobs[i].x = Math.sin(t * (.6 + i * .13) + i * 2.1) * .78;
       blobs[i].y = Math.cos(t * (.8 + i * .11) + i * 1.7) * .85;
@@ -380,18 +395,70 @@ if (context) {
         field += .14 / (dx * dx + dy * dy + .09);
       }
       const level = Math.max(0, Math.min(6, Math.floor(field * 2.5 - cell.radius * 1.5)));
-      paint(cell.offsets, palette[level]);
+      const liquid = palette[level];
+      const dim = 1 - .35 * reveal;
+      let red = liquid[0] * dim;
+      let green = liquid[1] * dim;
+      let blue = liquid[2] * dim;
+      if (reveal > 0) {
+        const x = cell.x / scale;
+        const y = (cell.y - rise) / scale;
+        const faceY = -y;
+        const halfWidth = (faceY + .74) / 1.28 * .74;
+        const shadowY = -(y - .1);
+        if (shadowY >= -.74 && shadowY <= .54 &&
+            Math.abs(x - .06) <= (shadowY + .74) / 1.28 * .74) {
+          const shadow = 1 - .6 * reveal;
+          red *= shadow;
+          green *= shadow;
+          blue *= shadow;
+        }
+        if (faceY >= -.74 && faceY <= .54 && Math.abs(x) <= halfWidth) {
+          // Light catches the top and left bevels of the downward-facing die.
+          let faceRed = 128 - y * 18 + cell.grain;
+          let faceGreen = 67 - y * 12 + cell.grain;
+          let faceBlue = 157 - y * 12 + cell.grain;
+          if (.54 - faceY < .075) {
+            faceRed = 187; faceGreen = 111; faceBlue = 184;
+          } else if (halfWidth + x < .065) {
+            faceRed = 231; faceGreen = 153; faceBlue = 207;
+          } else if (halfWidth - x < .065) {
+            faceRed = 83; faceGreen = 42; faceBlue = 108;
+          }
+          const surface = .94 * reveal;
+          red += (faceRed - red) * surface;
+          green += (faceGreen - green) * surface;
+          blue += (faceBlue - blue) * surface;
+        }
+      }
+      // The same edge falloff and reflection cross both the liquid and the die.
+      red = red * cell.shade + 205 * cell.reflection;
+      green = green * cell.shade + 172 * cell.reflection;
+      blue = blue * cell.shade + 233 * cell.reflection;
+      for (const offset of cell.offsets) {
+        pixels[offset] = red;
+        pixels[offset + 1] = green;
+        pixels[offset + 2] = blue;
+      }
     }
     context.putImageData(frame, 0, 0);
   }
   function animate(time) {
-    if (visible && !document.hidden && !reducedMotion.matches && time - previousFrame > 70) {
-      drawLiquid(time);
+    const state = scene.dataset.state;
+    const reduced = reducedMotion.matches;
+    const changed = state !== renderedState || reduced !== renderedReducedMotion;
+    if (visible && !document.hidden && (changed || (!reduced && time - previousFrame > 70))) {
+      if (state !== renderedState && state === 'answered') revealStarted = time;
+      const progress = reduced ? 1 : Math.min(1, (time - revealStarted) / 1200);
+      const reveal = state === 'answered' ? 1 - (1 - progress) ** 3 : 0;
+      drawLiquid(reduced ? 0 : time, state, reveal);
       previousFrame = time;
+      renderedState = state;
+      renderedReducedMotion = reduced;
     }
     requestAnimationFrame(animate);
   }
-  drawLiquid(0);
+  drawLiquid(0, 'idle', 0);
   new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; }).observe(canvas);
   requestAnimationFrame(animate);
 }

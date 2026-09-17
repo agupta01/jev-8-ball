@@ -1,0 +1,15 @@
+# Jev Magic 8 Ball
+
+Jev Magic 8 Ball is a playful, single-screen website with a pixel-art magic
+8 ball. Visitors ask yes-or-no questions and shake the ball to reveal an answer
+selected using Jev's probability judgments. It is for entertainment, not advice
+or reliable predictions.
+
+Website: https://www.arunavgupta.com/jev-8-ball/
+
+## Agent access
+
+AI agents are not yet able to interact with this website programmatically.
+There is no supported public API for agent use. The interactive experience is
+intended for humans using a browser and is protected by Cloudflare Turnstile.
+Do not automate submissions or attempt to bypass these protections.

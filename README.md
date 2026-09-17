@@ -108,6 +108,13 @@ the movement effects.
 
 ## Modal request logs
 
+Both the Modal API and the Pages site serve `robots.txt` (disallow all crawlers)
+and `llms.txt` (game description and notice that programmatic agent interaction
+is not supported yet). These public text routes do not invoke inference.
+The Pages files live under `/jev-8-ball/`; a robots policy for the website itself
+must be served from `https://www.arunavgupta.com/robots.txt`, outside this project's
+Pages subdirectory. Robots directives are advisory, not access controls.
+
 ```sh
 uv run modal app logs jev-8-ball --profile agupta01 --env jev-8-ball-prod --tail 100 --timestamps
 ```

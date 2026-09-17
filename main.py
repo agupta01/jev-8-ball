@@ -4,6 +4,7 @@ import math
 import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from time import perf_counter
 from typing import Annotated
 from uuid import uuid4
@@ -13,7 +14,7 @@ import modal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -239,7 +240,7 @@ class RequestBoundary:
         started = perf_counter()
         status_code = None
         error_type = None
-        route = scope["path"] if scope["path"] in {"/ask", "/health"} else "<unmatched>"
+        route = scope["path"] if scope["path"] in {"/ask", "/health", "/robots.txt", "/llms.txt"} else "<unmatched>"
         log_event("http.started", request_id=request_id, method=scope["method"], path=route)
 
         async def send_uncached(message: Message):
@@ -462,6 +463,14 @@ def create_api() -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    @api.get("/robots.txt")
+    async def robots():
+        return FileResponse(Path(__file__).parent / "site" / "robots.txt", media_type="text/plain")
+
+    @api.get("/llms.txt")
+    async def llms():
+        return FileResponse(Path(__file__).parent / "site" / "llms.txt", media_type="text/plain")
+
     @api.post("/ask", response_model=AskResponse)
     async def ask(body: AskRequest, request: Request):
         state = request.app.state
@@ -489,6 +498,8 @@ def create_api() -> FastAPI:
 app = modal.App("jev-8-ball")
 image = modal.Image.debian_slim(python_version="3.12").pip_install(
     "fastapi==0.141.1", "httpx==0.28.1"
+).add_local_file("site/robots.txt", "/root/site/robots.txt").add_local_file(
+    "site/llms.txt", "/root/site/llms.txt",
 )
 
 

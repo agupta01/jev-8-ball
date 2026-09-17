@@ -39,6 +39,28 @@ class AccessBoundaryTests(unittest.TestCase):
     def ask(self, **overrides):
         return self.client.post("/ask", headers={"Origin": ORIGIN}, json={"question": "  Is the sun a star?  ", "turnstile_token": "single-use-token", **overrides})
 
+    def test_request_logs_correlate_outcomes_without_sensitive_content(self):
+        private_question = "A personal question that must not appear in logs?"
+        with self.assertLogs("jev.requests", level="INFO") as captured:
+            accepted = self.ask(question=private_question)
+            self.verification["success"] = False
+            rejected = self.ask(question=private_question)
+        events = [json.loads(record.getMessage()) for record in captured.records]
+        accepted_id = accepted.headers["x-request-id"]
+        rejected_id = rejected.headers["x-request-id"]
+        self.assertNotEqual(accepted_id, rejected_id)
+        self.assertEqual({event["request_id"] for event in events}, {accepted_id, rejected_id})
+        completed = {
+            event["request_id"]: event["status_code"]
+            for event in events if event["event"] == "http.completed"
+        }
+        self.assertEqual(completed, {accepted_id: 200, rejected_id: 403})
+        inference = [event for event in events if event["event"] == "jev.completed"]
+        self.assertEqual([event["request_id"] for event in inference], [accepted_id])
+        log_text = "\n".join(captured.output)
+        for sensitive in [private_question, "single-use-token", "private-test-key", "private-test-secret"]:
+            self.assertNotIn(sensitive, log_text)
+
     def test_public_health_is_readable_without_granting_inference_access(self):
         origin = "https://untrusted.example"
         response = self.client.get("/health", headers={"Origin": origin})

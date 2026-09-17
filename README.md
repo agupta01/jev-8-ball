@@ -96,6 +96,38 @@ requires a secure context, sensor support, and permission on devices that
 request it. The button remains available. Reduced-motion preferences disable
 the movement effects.
 
+## Modal request logs
+
+```sh
+uv run modal app logs jev-8-ball --profile agupta01 --env jev-8-ball-prod --tail 100 --timestamps
+```
+
+Add `--follow` instead of `--tail 100` to stream. Structured JSON events cover
+HTTP start/completion, Turnstile success/failure, Jev start/completion/failure,
+and authenticated development RPCs. They include a request ID, status, stage
+timings, model, winner, and all eight probabilities. Public HTTP responses
+include `X-Request-ID` for correlation. API keys, verification tokens, request
+bodies, and raw question text are not logged.
+
+The on-screen timing and eight scores are appended together immediately after
+the response JSON is parsed and validated, before the remaining 2.4-second hold
+and triangle reveal. These are not streamed individual model results. The
+displayed Jev duration measures the backend's TypeSafe HTTP call, not Turnstile,
+browser round-trip time, or animation time.
+
+## Replay in the Jev playground
+
+Select `jev-latest` at https://console.typesafe.ai/decode and paste:
+
+- **State:** [`examples/jev-playground-state.json`](examples/jev-playground-state.json)
+- **Schema / Questions:** [`examples/jev-playground-schema.json`](examples/jev-playground-schema.json)
+
+These files were captured from the outgoing JSON of a real TypeSafe request,
+not reconstructed from a shortened example. The schema file is the eight-question
+map, without an outer `questions` wrapper. The capture used “Will my date go well?”
+and resolved to `jev-1.13.0`; its winner was “Signs point to yes” at 0.80.
+Results may vary between calls or model versions.
+
 ## Verification
 
 ```sh

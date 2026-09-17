@@ -1,8 +1,12 @@
+import json
+import logging
 import math
 import os
+import sys
 from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Annotated
+from uuid import uuid4
 
 import httpx
 import modal
@@ -13,6 +17,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+
+logger = logging.getLogger("jev.requests")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+
+
+def log_event(event: str, **fields):
+    logger.info(json.dumps({"event": event, **fields}, separators=(",", ":"), allow_nan=False))
 
 
 ORIGIN = "https://www.arunavgupta.com"
@@ -190,13 +207,35 @@ class RequestBoundary:
             await self.app(scope, receive, send)
             return
 
+        request_id = uuid4().hex
+        scope.setdefault("state", {})["request_id"] = request_id
+        started = perf_counter()
+        status_code = None
+        error_type = None
+        route = scope["path"] if scope["path"] in {"/ask", "/health"} else "<unmatched>"
+        log_event("http.started", request_id=request_id, method=scope["method"], path=route)
+
         async def send_uncached(message: Message):
+            nonlocal status_code
             if message["type"] == "http.response.start":
-                MutableHeaders(scope=message)["Cache-Control"] = "no-store"
+                status_code = message["status"]
+                headers = MutableHeaders(scope=message)
+                headers["Cache-Control"] = "no-store"
+                headers["X-Request-ID"] = request_id
             await send(message)
 
         cors = self.health_cors if scope["path"] == "/health" else self.cors
-        await cors(scope, receive, send_uncached)
+        try:
+            await cors(scope, receive, send_uncached)
+        except BaseException as exc:
+            error_type = type(exc).__name__
+            raise
+        finally:
+            log_event(
+                "http.completed", request_id=request_id, method=scope["method"], path=route,
+                status_code=status_code, elapsed_ms=round((perf_counter() - started) * 1000, 2),
+                error_type=error_type,
+            )
 
     async def dispatch(self, scope: Scope, receive: Receive, send: Send):
         if scope["method"] != "POST" or scope["path"] != "/ask":
@@ -304,10 +343,16 @@ def parse_answers(payload: object) -> tuple[list[Answer], str]:
     return validated, model
 
 
-async def evaluate_question(client: httpx.AsyncClient, api_key: str, question: str) -> AskResponse:
+async def evaluate_question(
+    client: httpx.AsyncClient, api_key: str, question: str, request_id: str,
+) -> AskResponse:
     payload = {"model": MODEL, "state": {"question": question}, "questions": QUESTIONS}
+    started = perf_counter()
+    log_event(
+        "jev.started", request_id=request_id, model=MODEL,
+        question_chars=len(question), answer_count=len(QUESTIONS),
+    )
     try:
-        started = perf_counter()
         response = await client.post(
             "https://api.typesafe.ai/v1/systemone",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -315,13 +360,31 @@ async def evaluate_question(client: httpx.AsyncClient, api_key: str, question: s
         )
         elapsed_ms = (perf_counter() - started) * 1000
         response.raise_for_status()
-        result = response.json()
+        answers, model = parse_answers(response.json())
     except httpx.TimeoutException:
+        log_event(
+            "jev.failed", request_id=request_id, reason="timeout",
+            elapsed_ms=round((perf_counter() - started) * 1000, 2),
+        )
         raise HTTPException(504, "The oracle timed out. Please try again.") from None
     except (httpx.HTTPError, ValueError):
+        log_event(
+            "jev.failed", request_id=request_id, reason="upstream_error",
+            elapsed_ms=round((perf_counter() - started) * 1000, 2),
+        )
         raise HTTPException(502, "The oracle is unavailable. Please try again.") from None
+    except HTTPException:
+        log_event(
+            "jev.failed", request_id=request_id, reason="invalid_answer",
+            elapsed_ms=round((perf_counter() - started) * 1000, 2),
+        )
+        raise
 
-    answers, model = parse_answers(result)
+    winner = max(answers, key=lambda answer: answer.probability)
+    log_event(
+        "jev.completed", request_id=request_id, model=model, elapsed_ms=round(elapsed_ms, 2),
+        winner=winner.id, probabilities={answer.id: answer.probability for answer in answers},
+    )
     return AskResponse(answers=answers, elapsed_ms=round(elapsed_ms, 2), model=model)
 
 
@@ -363,11 +426,23 @@ def create_api() -> FastAPI:
     @api.post("/ask", response_model=AskResponse)
     async def ask(body: AskRequest, request: Request):
         state = request.app.state
-        await verify_turnstile(
-            state.client, state.turnstile_secret, body.turnstile_token,
-            HOSTNAME,
+        request_id = request.state.request_id
+        started = perf_counter()
+        try:
+            await verify_turnstile(
+                state.client, state.turnstile_secret, body.turnstile_token, HOSTNAME,
+            )
+        except HTTPException as exc:
+            log_event(
+                "turnstile.failed", request_id=request_id, status_code=exc.status_code,
+                elapsed_ms=round((perf_counter() - started) * 1000, 2),
+            )
+            raise
+        log_event(
+            "turnstile.completed", request_id=request_id,
+            elapsed_ms=round((perf_counter() - started) * 1000, 2),
         )
-        return await evaluate_question(state.client, state.api_key, body.question)
+        return await evaluate_question(state.client, state.api_key, body.question, request_id)
 
     return api
 
@@ -398,5 +473,17 @@ def web():
 )
 async def development_question(question: str):
     """Private Modal RPC: callable only with workspace credentials, never an HTTP route."""
-    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
-        return (await evaluate_question(client, os.environ["TYPESAFE_API_KEY"], question)).model_dump()
+    request_id = uuid4().hex
+    started = perf_counter()
+    log_event("rpc.started", request_id=request_id, function="development_question")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
+            result = await evaluate_question(client, os.environ["TYPESAFE_API_KEY"], question, request_id)
+    except Exception as exc:
+        log_event(
+            "rpc.failed", request_id=request_id, error_type=type(exc).__name__,
+            elapsed_ms=round((perf_counter() - started) * 1000, 2),
+        )
+        raise
+    log_event("rpc.completed", request_id=request_id, elapsed_ms=round((perf_counter() - started) * 1000, 2))
+    return result.model_dump()

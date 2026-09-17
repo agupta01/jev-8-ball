@@ -117,8 +117,11 @@ HTTP start/completion, Turnstile success/failure, Jev start/completion/failure,
 and authenticated development RPCs. They include a request ID, status, stage
 timings, model, winner, all eight answer probabilities, and the yes/no-question
 probability. Public HTTP responses
-include `X-Request-ID` for correlation. API keys, verification tokens, request
-bodies, and raw question text are not logged.
+include `X-Request-ID` for correlation. The `jev.started` event includes the actual
+question in its `question` field, for both verified public requests and authenticated
+development RPCs. Question text is JSON-escaped and may contain personal information;
+treat access to these logs accordingly. API keys, verification tokens, and full
+request bodies are not logged.
 
 The on-screen timing, eight answer scores, and yes/no-question score are appended immediately after
 the response JSON is parsed and validated, before the remaining 2.4-second hold

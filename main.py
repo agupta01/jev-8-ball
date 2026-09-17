@@ -379,7 +379,8 @@ async def evaluate_question(
     started = perf_counter()
     log_event(
         "jev.started", request_id=request_id, model=MODEL,
-        question_chars=len(question), answer_count=len(ANSWERS), question_count=len(QUESTIONS),
+        question=question, question_chars=len(question),
+        answer_count=len(ANSWERS), question_count=len(QUESTIONS),
     )
     try:
         response = await client.post(

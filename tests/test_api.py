@@ -40,12 +40,12 @@ class AccessBoundaryTests(unittest.TestCase):
     def ask(self, **overrides):
         return self.client.post("/ask", headers={"Origin": ORIGIN}, json={"question": "  Is the sun a star?  ", "turnstile_token": "single-use-token", **overrides})
 
-    def test_request_logs_correlate_outcomes_without_sensitive_content(self):
-        private_question = "A personal question that must not appear in logs?"
+    def test_request_logs_include_question_without_credentials(self):
+        question = 'Is "yes" the answer?\nOr no?'
         with self.assertLogs("jev.requests", level="INFO") as captured:
-            accepted = self.ask(question=private_question)
+            accepted = self.ask(question=question)
             self.verification["success"] = False
-            rejected = self.ask(question=private_question)
+            rejected = self.ask(question=question)
         events = [json.loads(record.getMessage()) for record in captured.records]
         accepted_id = accepted.headers["x-request-id"]
         rejected_id = rejected.headers["x-request-id"]
@@ -58,8 +58,14 @@ class AccessBoundaryTests(unittest.TestCase):
         self.assertEqual(completed, {accepted_id: 200, rejected_id: 403})
         inference = [event for event in events if event["event"] == "jev.completed"]
         self.assertEqual([event["request_id"] for event in inference], [accepted_id])
+        started = [event for event in events if event["event"] == "jev.started"]
+        self.assertEqual(
+            [(event["request_id"], event["question"]) for event in started],
+            [(accepted_id, question)],
+        )
+        self.assertTrue(all("\n" not in record.getMessage() for record in captured.records))
         log_text = "\n".join(captured.output)
-        for sensitive in [private_question, "single-use-token", "private-test-key", "private-test-secret"]:
+        for sensitive in ["single-use-token", "private-test-key", "private-test-secret"]:
             self.assertNotIn(sensitive, log_text)
 
     def test_public_health_is_readable_without_granting_inference_access(self):

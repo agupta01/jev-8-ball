@@ -76,6 +76,17 @@ measures whether that fixed answer fits the question; they are independent,
 do not sum to 100%, and are not predictions of real-world events. The frontend
 chooses the highest score, keeping the first answer on ties.
 
+Each answer has its own Noul `true`/`false` criteria in `main.py`.
+Ordinary low-stakes uncertainty permits a playful directional answer rather
+than automatically forcing abstention. “Signs point to yes” is tentative
+encouragement; “Most likely” needs a favorable common-sense expectation;
+“It is certain” needs decisive facts. The negative answers distinguish firm
+contradiction, implausibility, and concrete adverse circumstances.
+“Reply hazy” covers unclear wording or genuinely conflicting clues.
+“Cannot predict now” is reserved for random outcomes, unavailable external
+information, or individualized expert determinations. Probabilities are not
+rescaled or overridden to force variety.
+
 The game logs the response immediately but waits at least 2.4 seconds before
 revealing its triangle. The question remains editable, and overlapping button,
 keyboard, or motion submissions cannot send concurrent requests. Phone shake
@@ -105,6 +116,13 @@ the real Cloudflare test widget, its verification service, authenticated Modal R
 and real Jev inference. “Is the sun a star?” selected “It is certain.” and a repeat
 question “Is the Earth flat?” selected “Absolutely not.” Production rejection of
 the dummy token was separately verified.
+
+A live 14-question spot-check of these criteria on `jev-1.13.0` gave directional
+answers to all six ordinary choices/forecasts, preserved correct factual yes/no
+answers, and kept “Cannot predict now” for a coin flip, live package status, and
+a personal medical outcome. “Should I do it?” selected “Reply hazy”; poor exam
+preparation selected “Outlook not so good.” This is a representative spot-check,
+not a measured accuracy guarantee or a deterministic model regression test.
 
 The real Turnstile widget loaded in an automated browser with local assets served
 under the production origin through request interception, but its human challenge
